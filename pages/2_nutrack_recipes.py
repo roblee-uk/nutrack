@@ -22,6 +22,7 @@ def fetch_recipe_data():
 def fetch_recipe_ingredients(recipe_id):
     response = supabase.table("recipe_ingredients").select('*, foods(*)').execute()
     df = pd.DataFrame(response.data)
+    df = df[df['recipe_id'] == recipe_id]
 
     food_cols = ['food_id', 'food_name', 'protein', 'carbohydrates', 'sugars', 'fat', 'saturates', 'fiber'] 
     foods_expanded = pd.json_normalize(df['foods'])[food_cols]
@@ -36,7 +37,7 @@ def fetch_recipe_ingredients(recipe_id):
 
     display_cols = ['food_name', 'amount', 'protein', 'carbohydrates', 'sugars', 'fat', 'saturates', 'fiber']
 
-    return clean_df[clean_df['recipe_id']==recipe_id][display_cols]
+    return clean_df[display_cols]
 
 # Function to populate a dataframe of all foods
 def fetch_food_data():
@@ -69,20 +70,24 @@ selected_recipe = recipes['recipe_id'].iloc[recipe_selection['selection']['rows'
 # If a selection has been made show the foods which make up the recipe selected
 if len(selected_recipe) > 0:
     id = selected_recipe.to_list()[0]
+    st.write(fetch_recipe_ingredients(id))
 
     st.subheader("Current Ingredients",divider="blue")
     st.dataframe(fetch_recipe_ingredients(id), hide_index=True)
+
+    st.write()
 
     # Form for adding food to recipe
     st.subheader("Add New Ingredient",divider="blue")
     with st.form("new_ingredient_form", clear_on_submit=True,):
         food_name = st.selectbox("Food Name", options=foods['food_name'])
         amount = st.number_input("Amount (g)", min_value=0.0, step=0.1)
+
+        food_id = foods[foods['food_name']==food_name]['food_id'].to_list()[0]    
+        ingredient_submitted = st.form_submit_button("Add Ingredient")
+            
         
-        submitted = st.form_submit_button("Add Ingredient")
-        food_id = foods[foods['food_name']==food_name]['food_id'].to_list()[0]        
-        
-        if submitted:
+        if ingredient_submitted:
             new_ingredient = {
                 "food_id": food_id,
                 "recipe_id": selected_recipe.to_list()[0],
@@ -92,10 +97,11 @@ if len(selected_recipe) > 0:
             response = supabase.table("recipe_ingredients").insert(new_ingredient).execute()
             
             if response.data:
-                st.success(f"Successfully added {food_name} to the ingredients for {recipes[recipes['recipe_id']==selected_recipe]}!")
+                st.success(f"Successfully added {food_name} to the ingredients for {recipes[recipes['recipe_id']==selected_recipe.to_list()[0]]['recipe_name']}!")
                 st.rerun()
             else:
                 st.error("Failed to add food to the database. Please try again.")
+    
     st.write('***If the food you wish to add to the recipe does not exist yet, add it below***')
 
     # Form for new food entry
