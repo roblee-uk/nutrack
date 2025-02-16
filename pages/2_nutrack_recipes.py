@@ -24,20 +24,24 @@ def fetch_recipe_ingredients(recipe_id):
     df = pd.DataFrame(response.data)
     df = df[df['recipe_id'] == recipe_id]
 
-    food_cols = ['food_id', 'food_name', 'protein', 'carbohydrates', 'sugars', 'fat', 'saturates', 'fiber'] 
-    foods_expanded = pd.json_normalize(df['foods'])[food_cols]
-    
-    recipe_cols = ['recipe_id', 'food_id', 'amount']
-    df = df[recipe_cols]
-    
-    clean_df = pd.merge(df, foods_expanded, on='food_id')
+    if len(df) < 1:
+        return df
 
-    for col in food_cols[2:]:
-        clean_df[col] = clean_df.apply(lambda row: row[col] * (row['amount']/100), axis=1)
+    else:
+        food_cols = ['food_id', 'food_name', 'protein', 'carbohydrates', 'sugars', 'fat', 'saturates', 'fiber'] 
+        foods_expanded = pd.json_normalize(df['foods'])[food_cols]
+        
+        recipe_cols = ['recipe_id', 'food_id', 'amount']
+        df = df[recipe_cols]
+        
+        clean_df = pd.merge(df, foods_expanded, on='food_id')
 
-    display_cols = ['food_name', 'amount', 'protein', 'carbohydrates', 'sugars', 'fat', 'saturates', 'fiber']
+        for col in food_cols[2:]:
+            clean_df[col] = clean_df.apply(lambda row: row[col] * (row['amount']/100), axis=1)
 
-    return clean_df[display_cols]
+        display_cols = ['food_name', 'amount', 'protein', 'carbohydrates', 'sugars', 'fat', 'saturates', 'fiber']
+
+        return clean_df[display_cols]
 
 # Function to populate a dataframe of all foods
 def fetch_food_data():
@@ -70,12 +74,9 @@ selected_recipe = recipes['recipe_id'].iloc[recipe_selection['selection']['rows'
 # If a selection has been made show the foods which make up the recipe selected
 if len(selected_recipe) > 0:
     id = selected_recipe.to_list()[0]
-    st.write(fetch_recipe_ingredients(id))
-
+    
     st.subheader("Current Ingredients",divider="blue")
     st.dataframe(fetch_recipe_ingredients(id), hide_index=True)
-
-    st.write()
 
     # Form for adding food to recipe
     st.subheader("Add New Ingredient",divider="blue")
