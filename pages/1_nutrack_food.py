@@ -19,7 +19,7 @@ st.title("Foods Database")
 fetch_and_display_data()
 
 # Form for new food entry
-st.subheader("Add New Food")
+st.subheader("Add New Food", divider='blue')
 with st.form("new_food_form", clear_on_submit=True,):
     name = st.text_input("Food Name")
     protein = st.number_input("Protein Content (g)", min_value=0.0, step=0.1)

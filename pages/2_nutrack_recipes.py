@@ -54,7 +54,9 @@ foods = fetch_food_data()
 
 # Display recipe data
 # Allowing the user to select a single row at a time
-st.title("Saved Recipes")
+st.title("Recipes")
+st.subheader("Current Saved Recipes",divider="blue")
+
 recipe_selection = st.dataframe(recipes['recipe_name']
                                 , hide_index=True
                                 , on_select="rerun"
@@ -66,21 +68,19 @@ selected_recipe = recipes['recipe_id'].iloc[recipe_selection['selection']['rows'
 
 # If a selection has been made show the foods which make up the recipe selected
 if len(selected_recipe) > 0:
-    id = selected_recipe.loc[0]
+    id = selected_recipe.to_list()[0]
+
+    st.subheader("Current Ingredients",divider="blue")
     st.dataframe(fetch_recipe_ingredients(id), hide_index=True)
 
     # Form for adding food to recipe
-    st.subheader("Add New Food to Recipe")
-    with st.form("new_food_form", clear_on_submit=True,):
+    st.subheader("Add New Ingredient",divider="blue")
+    with st.form("new_ingredient_form", clear_on_submit=True,):
         food_name = st.selectbox("Food Name", options=foods['food_name'])
         amount = st.number_input("Amount (g)", min_value=0.0, step=0.1)
         
-        
-        st.write(food_name)
-        submitted = st.form_submit_button("Add Food")
-
-        food_id = foods[foods['food_name']==food_name]['food_id'].to_list()[0]
-        st.write(selected_recipe.to_list()[0])
+        submitted = st.form_submit_button("Add Ingredient")
+        food_id = foods[foods['food_name']==food_name]['food_id'].to_list()[0]        
         
         if submitted:
             new_ingredient = {
@@ -96,8 +96,67 @@ if len(selected_recipe) > 0:
                 st.rerun()
             else:
                 st.error("Failed to add food to the database. Please try again.")
+    st.write('***If the food you wish to add to the recipe does not exist yet, add it below***')
 
-#st.dataframe(selected_ingredients[selected_ingredients['recipe_id']==selected_recipe])
+    # Form for new food entry
+    st.subheader("Add New Food", divider='blue')
+    with st.form("new_food_form", clear_on_submit=True,):
+        name = st.text_input("Food Name")
+        protein = st.number_input("Protein Content (g)", min_value=0.0, step=0.1)
+        carbs = st.number_input("Carbohydrate Content (g)", min_value=0.0, step=0.1)
+        sugars = st.number_input("of which sugars (g)", min_value=0.0, step=0.1)
+        fat = st.number_input("Fat Content (g)", min_value=0.0, step=0.1)
+        sats = st.number_input("of which saturates (g)", min_value=0.0, step=0.1)
+        fiber = st.number_input("Fiber Content (g)", min_value=0.0, step=0.1)
+        
+        food_submitted = st.form_submit_button("Add Food")
+        
+        if food_submitted:
+            current_time = datetime.now().isoformat()
+            new_food = {
+                "food_name": name,
+                "protein": protein,
+                "carbohydrates": carbs,
+                "sugars": sugars,
+                "fat": fat,
+                "saturates": sats,
+                "fiber": fiber,
+                "created_at": current_time,
+                "updated_at": current_time
+            }
+            
+            response = supabase.table("foods").insert(new_food).execute()
+            
+            if response.data:
+                st.success(f"Successfully added {name} to the database!")
+                st.rerun()
+            else:
+                st.error("Failed to add food to the database. Please try again.")
+
+else:
+    # Form for adding food to recipe
+    st.subheader("Add New Recipe", divider='blue')
+    with st.form("new_recipe_form", clear_on_submit=True,):
+        recipe_name = st.text_input("Recipe Name")
+        submitted = st.form_submit_button("Add Recipe")
+
+        
+        if submitted:
+            current_time = datetime.now().isoformat()
+            new_recipe = {
+                "recipe_name": recipe_name,
+                "created_at": current_time,
+                "updated_at": current_time
+                }
+            
+            response = supabase.table("recipes").insert(new_recipe).execute()
+            
+            if response.data:
+                st.success(f"Successfully added {recipe_name}!")
+                st.rerun()
+            else:
+                st.error("Failed to add food to the database. Please try again.")
+            
 
 
 
