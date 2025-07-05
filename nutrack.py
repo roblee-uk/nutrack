@@ -24,7 +24,7 @@ def insert_user_profile():
         response = supabase.table('user_profiles').insert({
             'user_id': user.id,
             'email': user.email
-        }).execute(returning="minimal")
+        }).execute()
         if hasattr(response, "error") and response.error:
             st.error(f"Profile creation failed: {response.error.message}")
         else:
