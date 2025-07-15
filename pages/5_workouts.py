@@ -1,7 +1,7 @@
 import streamlit as st
 from supabase import create_client, Client
 import pandas as pd
-from datetime import datetime
+from datetime import date, datetime
 from nutrack_utils import show_sidebar_user_info, check_auth_and_profile
 
 show_sidebar_user_info()
@@ -26,6 +26,8 @@ def convert_to_json_serializable(data):
             return data.item()
         else:
             return int(data)
+    elif isinstance(data, (date, datetime)):
+        return data.isoformat()
     else:
         return data
 
@@ -75,12 +77,91 @@ def fetch_workout_exercises(workout_id):
 
 st.title("Workout Tracking")
 
-# Section 1: Quick Workout Creation
-st.subheader("Create New Workout", divider="blue")
+workouts = fetch_workouts()
+exercises = fetch_exercises()
 
+# Section 1: Quick Stats
+if not workouts.empty:
+    st.subheader("Quick Stats", divider="blue")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("Total Workouts", len(workouts))
+    
+    with col2:
+        # Count total exercises across all workouts
+        total_exercises = 0
+        for _, workout in workouts.iterrows():
+            workout_exercises = fetch_workout_exercises(workout['workout_id'])
+            total_exercises += len(workout_exercises)
+        st.metric("Total Exercises", total_exercises)
+    
+    with col3:
+        # Count strength vs cardio exercises
+        strength_count = 0
+        cardio_count = 0
+        for _, workout in workouts.iterrows():
+            workout_exercises = fetch_workout_exercises(workout['workout_id'])
+            for ex in workout_exercises:
+                if ex.get('exercises', {}).get('exercise_type') == 'cardio':
+                    cardio_count += 1
+                else:
+                    strength_count += 1
+        st.metric("Strength Exercises", strength_count)
+    
+    with col4:
+        st.metric("Cardio Exercises", cardio_count)
+
+
+# Section 1: Quick Workout Creation
+st.subheader("View/Add Workout", divider="blue")
+
+if not workouts.empty:
+    st.markdown("##### Recent Workouts")
+    
+    # Show expandable summaries of recent workouts
+    for idx, workout in workouts.head(3).iterrows():
+        workout_exercises = fetch_workout_exercises(workout['workout_id'])
+        
+        with st.expander(f"{workout['workout_name']} - {workout['created_at'][:10]} ({len(workout_exercises)} exercises)"):
+            if workout_exercises:
+                for exercise in workout_exercises:
+                    exercise_name = exercise['exercises']['exercise_name']
+                    exercise_type = exercise['exercises'].get('exercise_type', 'strength')
+                    details = []
+                    
+                    # Build exercise details string based on exercise type and available data
+                    if exercise_type == 'strength':
+                        if exercise.get('sets') and exercise.get('reps'):
+                            set_info = f"{exercise['sets']} sets × {exercise['reps']} reps"
+                            if exercise.get('weight'):
+                                set_info += f" @ {exercise['weight']}kg"
+                            details.append(set_info)
+                    else:  # cardio
+                        if exercise.get('duration'):
+                            details.append(f"{exercise['duration']} min")
+                        if exercise.get('distance'):
+                            details.append(f"{exercise['distance']} km")
+                    
+                    # Show exercise notes if available
+                    if exercise.get('notes'):
+                        details.append(f"📝 {exercise['notes']}")
+                    
+                    detail_text = " | ".join(details) if details else "No details recorded"
+                    exercise_icon = "🏃" if exercise_type == 'cardio' else "💪"
+                    st.write(f"{exercise_icon} **{exercise_name}**: {detail_text}")
+            else:
+                st.write("No exercises logged yet")
+            
+            # Show workout notes if available
+            if workout.get('notes'):
+                st.write(f"**Workout Notes:** {workout['notes']}")
+
+st.markdown("##### Add New Workout")
 with st.form("quick_workout_form", clear_on_submit=True):
     workout_name = st.text_input("Workout Name", placeholder="e.g., Push Day, Legs, Cardio")
-    workout_notes = st.text_area("Notes (optional)", placeholder="Any additional notes about this workout")
+    workout_date = st.date_input("Date")
     
     if st.form_submit_button("Create Workout"):
         if not workout_name.strip():
@@ -93,7 +174,7 @@ with st.form("quick_workout_form", clear_on_submit=True):
                 new_workout = {
                     "user_id": st.session_state.session.user.id,
                     "workout_name": workout_name.strip(),
-                    "notes": workout_notes.strip() if workout_notes.strip() else None,
+                    "workout_date": workout_date,
                     "created_at": current_time,
                     "updated_at": current_time
                 }
@@ -112,7 +193,7 @@ with st.form("quick_workout_form", clear_on_submit=True):
                 st.error(f"Error creating workout: {str(e)}")
 
 # Section 2: Exercise Logging
-st.subheader("Log Exercise", divider="blue")
+st.subheader("Log Exercise to Workout", divider="blue")
 
 workouts = fetch_workouts()
 exercises = fetch_exercises()
@@ -140,12 +221,6 @@ if not workouts.empty and not exercises.empty:
     
     # Get exercise type automatically
     exercise_type = get_exercise_type(exercise_name, exercises)
-    
-    # Display exercise type info
-    if exercise_type == 'cardio':
-        st.info(f"🏃 **{exercise_name}** is a cardio exercise")
-    else:
-        st.info(f"💪 **{exercise_name}** is a strength exercise")
     
     # Dynamic form based on exercise type
     with st.form("exercise_log_form", clear_on_submit=True):
@@ -239,132 +314,5 @@ else:
         st.info("Add some exercises first using the Exercise Management page!")
 
 # Section 3: Current Workout Summary
-if not workouts.empty:
-    st.subheader("Recent Workouts", divider="blue")
-    
-    # Show expandable summaries of recent workouts
-    for idx, workout in workouts.head(5).iterrows():
-        workout_exercises = fetch_workout_exercises(workout['workout_id'])
-        
-        with st.expander(f"{workout['workout_name']} - {workout['created_at'][:10]} ({len(workout_exercises)} exercises)"):
-            if workout_exercises:
-                for exercise in workout_exercises:
-                    exercise_name = exercise['exercises']['exercise_name']
-                    exercise_type = exercise['exercises'].get('exercise_type', 'strength')
-                    details = []
-                    
-                    # Build exercise details string based on exercise type and available data
-                    if exercise_type == 'strength':
-                        if exercise.get('sets') and exercise.get('reps'):
-                            set_info = f"{exercise['sets']} sets × {exercise['reps']} reps"
-                            if exercise.get('weight'):
-                                set_info += f" @ {exercise['weight']}kg"
-                            details.append(set_info)
-                    else:  # cardio
-                        if exercise.get('duration'):
-                            details.append(f"{exercise['duration']} min")
-                        if exercise.get('distance'):
-                            details.append(f"{exercise['distance']} km")
-                    
-                    # Show exercise notes if available
-                    if exercise.get('notes'):
-                        details.append(f"📝 {exercise['notes']}")
-                    
-                    detail_text = " | ".join(details) if details else "No details recorded"
-                    exercise_icon = "🏃" if exercise_type == 'cardio' else "💪"
-                    st.write(f"{exercise_icon} **{exercise_name}**: {detail_text}")
-            else:
-                st.write("No exercises logged yet")
-            
-            # Show workout notes if available
-            if workout.get('notes'):
-                st.write(f"**Workout Notes:** {workout['notes']}")
 
-# Section 4: Quick Stats
-if not workouts.empty:
-    st.subheader("Quick Stats", divider="blue")
-    
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric("Total Workouts", len(workouts))
-    
-    with col2:
-        # Count total exercises across all workouts
-        total_exercises = 0
-        for _, workout in workouts.iterrows():
-            workout_exercises = fetch_workout_exercises(workout['workout_id'])
-            total_exercises += len(workout_exercises)
-        st.metric("Total Exercises", total_exercises)
-    
-    with col3:
-        # Count strength vs cardio exercises
-        strength_count = 0
-        cardio_count = 0
-        for _, workout in workouts.iterrows():
-            workout_exercises = fetch_workout_exercises(workout['workout_id'])
-            for ex in workout_exercises:
-                if ex.get('exercises', {}).get('exercise_type') == 'cardio':
-                    cardio_count += 1
-                else:
-                    strength_count += 1
-        st.metric("Strength Exercises", strength_count)
-    
-    with col4:
-        st.metric("Cardio Exercises", cardio_count)
 
-# Help Section
-with st.expander("ℹ️ Help & Tips"):
-    st.write("""
-    **How to use this page:**
-    
-    1. **Create a workout** - Enter a name and any notes, then click "Create Workout"
-    2. **Log exercises** - Select your workout (most recent is selected by default), choose an exercise
-    3. **Auto-detection** - Exercise type (strength/cardio) is automatically detected from your exercise database
-    4. **Dynamic forms** - Form fields change based on exercise type:
-       - **Strength**: Sets, Reps, Weight
-       - **Cardio**: Duration, Distance
-    5. **View history** - Expand recent workouts to see detailed exercise logs
-    
-    **Tips:**
-    - Exercise types are determined automatically from your exercise database
-    - Strength exercises show sets/reps/weight fields
-    - Cardio exercises show duration/distance fields
-    - Only non-zero values are saved (empty fields are ignored)
-    - Add notes to any exercise for additional context
-    """)
-
-# Exercise Type Management Section
-with st.expander("🔧 Exercise Type Management"):
-    st.write("**Manage Exercise Types**")
-    
-    if not exercises.empty:
-        # Show current exercise types
-        st.write("**Current Exercise Types:**")
-        exercise_type_summary = exercises.groupby('exercise_type').size().reset_index(columns=['count'])
-        
-        for _, row in exercise_type_summary.iterrows():
-            st.write(f"- **{row['exercise_type'].title()}**: {row['count']} exercises")
-        
-        # Quick type update form
-        st.write("**Update Exercise Type:**")
-        with st.form("update_exercise_type"):
-            update_exercise = st.selectbox("Select Exercise", exercises['exercise_name'])
-            new_type = st.selectbox("New Type", ["strength", "cardio"])
-            
-            if st.form_submit_button("Update Exercise Type"):
-                try:
-                    set_supabase_auth()
-                    exercise_id = exercises[exercises['exercise_name'] == update_exercise]['exercise_id'].iloc[0]
-                    
-                    response = supabase.table("exercises").update({
-                        "exercise_type": new_type
-                    }).eq("exercise_id", exercise_id).execute()
-                    
-                    if response.data:
-                        st.success(f"Updated {update_exercise} to {new_type}")
-                        st.rerun()
-                    else:
-                        st.error("Failed to update exercise type")
-                except Exception as e:
-                    st.error(f"Error updating exercise type: {str(e)}")
